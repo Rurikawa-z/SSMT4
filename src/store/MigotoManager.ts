@@ -5,7 +5,7 @@ import { D3dxIniManager } from './D3dxIniManager'
 import { ResourceManager } from './ResourceManager'
 import { PathHelper } from '../helper/PathHelper'
 import { i18n } from '../i18n'
-import type { GameConfig, HuntingMode } from './GameConfig'
+import type { ExtraDllConfig, GameConfig, HuntingMode } from './GameConfig'
 
 const t = i18n.global.t
 
@@ -55,7 +55,7 @@ export interface ThreeDMigotoConfig {
   huntingMode?: HuntingMode
   delay?: number
   extraDll?: string
-  extraDlls?: string[]
+  extraDlls?: Array<ExtraDllConfig | string>
   autoExitSeconds?: number
   useUpx?: boolean
 }
@@ -314,11 +314,22 @@ export class MigotoManager {
       lines = D3dxIniManager.setIniValue(lines, 'Loader', 'delay', String(cfg.autoExitSeconds))
     }
 
-    const extraDlls = Array.isArray(cfg.extraDlls)
-      ? cfg.extraDlls.filter((dll): dll is string => typeof dll === 'string').map(dll => dll.trim()).filter(Boolean)
-      : []
+    const rawExtraDlls: unknown[] = Array.isArray(cfg.extraDlls) ? cfg.extraDlls : []
+    const extraDllEntries = rawExtraDlls
+      .map((item): ExtraDllConfig => typeof item === 'string'
+        ? { path: item.trim(), enabled: true }
+        : {
+            path: typeof (item as Partial<ExtraDllConfig> | null)?.path === 'string'
+              ? ((item as Partial<ExtraDllConfig>).path || '').trim()
+              : '',
+            enabled: (item as Partial<ExtraDllConfig> | null)?.enabled !== false,
+          })
+        .filter(item => item.path)
+    const extraDlls = extraDllEntries.filter(item => item.enabled).map(item => item.path)
     const legacyExtraDll = typeof cfg.extraDll === 'string' ? cfg.extraDll.trim() : ''
-    const dllsToInject = options.extraDlls ?? (extraDlls.length > 0 ? extraDlls : (legacyExtraDll ? [legacyExtraDll] : []))
+    const dllsToInject = options.extraDlls ?? (extraDllEntries.length > 0
+      ? extraDlls
+      : (legacyExtraDll ? [legacyExtraDll] : []))
 
     if (dllsToInject.length > 0) {
       lines = D3dxIniManager.setIniValue(lines, 'Loader', 'inject_dlls', dllsToInject.join('|'))

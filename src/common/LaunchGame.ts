@@ -7,7 +7,7 @@ import { MigotoManager, type RuntimeSyncResult } from "../store/MigotoManager";
 import { GlobalConfig } from "../store/GlobalConfig";
 import { PathHelper } from "../helper/PathHelper";
 import { i18n } from "../i18n";
-import { getEffectiveUseUpx, type GameConfig, type LaunchProgramConfig } from "../store/GameConfig";
+import { getEffectiveUseUpx, type ExtraDllConfig, type GameConfig, type LaunchProgramConfig } from "../store/GameConfig";
 import type { AppSettings } from "../store/AppSettings";
 import { debugLog, debugWarn } from "../utils/debugLog";
 import { serializePlayerTweaksCamera } from '../plugin/playerTweaksCamera';
@@ -636,12 +636,21 @@ export class LaunchGame {
                 // Run.exe only consumes extra DLLs on its native launch path.
                 useShell = false;
             }
-            const configuredExtraDlls = Array.isArray(config.extraDlls)
-                ? config.extraDlls.filter((dll): dll is string => typeof dll === "string").map(dll => dll.trim()).filter(Boolean)
+            const configuredExtraDllEntries = Array.isArray(config.extraDlls)
+                ? (config.extraDlls as Array<ExtraDllConfig | string>)
+                    .map((item): ExtraDllConfig => typeof item === "string"
+                        ? { path: item.trim(), enabled: true }
+                        : { path: (item?.path || "").trim(), enabled: item?.enabled !== false })
+                    .filter(item => item.path)
                 : [];
+            const configuredExtraDlls = configuredExtraDllEntries
+                .filter(item => item.enabled)
+                .map(item => item.path);
             const legacyExtraDll = typeof config.extraDll === "string" ? config.extraDll.trim() : "";
             const launchExtraDlls = this.dedupeDllPaths([
-                ...(configuredExtraDlls.length ? configuredExtraDlls : legacyExtraDll ? [legacyExtraDll] : []),
+                ...(configuredExtraDllEntries.length > 0
+                    ? configuredExtraDlls
+                    : legacyExtraDll ? [legacyExtraDll] : []),
                 ...pluginInjectedDlls,
             ]);
             const useEfmiDirectWait = useRunInjector &&
