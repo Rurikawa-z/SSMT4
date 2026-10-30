@@ -265,6 +265,8 @@
       "moveDown": "Move Down",
       "remove": "Remove",
       "addDll": "Add DLL",
+      "enableDllInjection": "Enable injection for this DLL",
+      "disableDllInjection": "Disable injection for this DLL",
       "setCurrentD3d11Dll": "Set as current d3d11.dll",
       "openPackageRepository": "Open Package GitHub Repository",
       "addProgram": "Add Program",

@@ -14,6 +14,11 @@ export interface LaunchProgramConfig {
     args?: string;
 }
 
+export interface ExtraDllConfig {
+    path: string;
+    enabled: boolean;
+}
+
 const normalizeHuntingMode = (value: unknown): HuntingMode => {
     if (value === '0' || value === '1' || value === '2') {
         return value
@@ -62,12 +67,22 @@ const normalizeExtraDll = (value: unknown): string => {
     return value.trim()
 }
 
-const normalizeExtraDlls = (value: unknown, legacyExtraDll?: unknown): string[] => {
+const normalizeExtraDllItem = (value: unknown): ExtraDllConfig | null => {
+    if (typeof value === 'string') {
+        const path = value.trim()
+        return path ? { path, enabled: true } : null
+    }
+    if (!value || typeof value !== 'object') {
+        return null
+    }
+    const candidate = value as Partial<ExtraDllConfig>
+    const path = typeof candidate.path === 'string' ? candidate.path.trim() : ''
+    return path ? { path, enabled: candidate.enabled !== false } : null
+}
+
+const normalizeExtraDlls = (value: unknown, legacyExtraDll?: unknown): ExtraDllConfig[] => {
     const normalized = Array.isArray(value)
-        ? value
-            .filter((item): item is string => typeof item === 'string')
-            .map(item => item.trim())
-            .filter(Boolean)
+        ? value.map(normalizeExtraDllItem).filter((item): item is ExtraDllConfig => item !== null)
         : []
 
     if (normalized.length > 0) {
@@ -75,7 +90,7 @@ const normalizeExtraDlls = (value: unknown, legacyExtraDll?: unknown): string[] 
     }
 
     const legacy = normalizeExtraDll(legacyExtraDll)
-    return legacy ? [legacy] : []
+    return legacy ? [{ path: legacy, enabled: true }] : []
 }
 
 export type GameConfig = {
@@ -109,7 +124,7 @@ export type GameConfig = {
     delay?: number;
     autoExitSeconds?: number;
     extraDll?: string;
-    extraDlls?: string[];
+    extraDlls?: ExtraDllConfig[];
     useSpecificIbDump?: boolean;
     specificIbDumpRestoreAnalyseOptions?: string;
     configureGame?: boolean;
@@ -187,7 +202,7 @@ export const useGameConfigStore = defineStore('gameConfig', () => {
         const { d3d11Mode: _legacyMode, allowDllUpdates: _legacyUpdates,
             checkDllUpdateBeforeLaunch: _legacyCheck, ...currentConfig } = config
         const extraDlls = normalizeExtraDlls(config.extraDlls, config.extraDll)
-        const extraDll = extraDlls[0] || ''
+        const extraDll = extraDlls.find(item => item.enabled)?.path || ''
         const useUpxManuallySet = config.useUpxManuallySet === true
         const useUpx = getEffectiveUseUpx(config)
 
@@ -200,7 +215,7 @@ export const useGameConfigStore = defineStore('gameConfig', () => {
             lockRuntimeUpdates: config.lockRuntimeUpdates === true,
             extraDll,
             extraDlls,
-            useShell: extraDlls.length > 0 ? false : !!config.useShell,
+            useShell: extraDlls.some(item => item.enabled) ? false : !!config.useShell,
             preLaunchPrograms: normalizeLaunchProgramList(config.preLaunchPrograms),
             postLaunchPrograms: normalizeLaunchProgramList(config.postLaunchPrograms),
         }

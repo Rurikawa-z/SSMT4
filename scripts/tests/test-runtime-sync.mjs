@@ -349,6 +349,54 @@ test('GIMI configuration follows the saved switch before injection', async t => 
   assert.ok(configure < h.calls.findIndex(call => call.command === 'launch_programs'));
 });
 
+test('disabled extra DLL entries are skipped while legacy strings stay enabled', async t => {
+  const h = await harness(t, {
+    config: {
+      extraDlls: [
+        { path: 'C:/Extra/Enabled.dll', enabled: true },
+        { path: 'C:/Extra/Disabled.dll', enabled: false },
+        'C:/Extra/Legacy.dll',
+      ],
+    },
+  });
+  await h.launch.launch('GIMI', { gameLaunchMode: 'always-normal' }, () => {});
+  const ini = await fs.readFile(path.join(h.migotoDir, 'd3dx.ini'), 'utf8');
+  assert.match(ini, /inject_dlls = C:\/Extra\/Enabled.dll\|C:\/Extra\/Legacy.dll/);
+  assert.doesNotMatch(ini, /Disabled\.dll/);
+});
+
+test('enabled extra DLL entries are written to the injector list', async t => {
+  const h = await harness(t, {
+    config: {
+      extraDlls: [
+        { path: 'C:/Extra/Enabled.dll', enabled: true },
+      ],
+    },
+  });
+  await h.launch.launch('GIMI', { gameLaunchMode: 'always-normal' }, () => {});
+  const ini = await fs.readFile(path.join(h.migotoDir, 'd3dx.ini'), 'utf8');
+  assert.match(ini, /inject_dlls = C:\/Extra\/Enabled.dll/);
+});
+
+test('all disabled extra DLL entries remove a stale injector list', async t => {
+  const h = await harness(t, {
+    config: {
+      extraDlls: [
+        { path: 'C:/Extra/DisabledA.dll', enabled: false },
+        { path: 'C:/Extra/DisabledB.dll', enabled: false },
+      ],
+    },
+  });
+  await fs.writeFile(
+    path.join(h.migotoDir, 'd3dx.ini'),
+    '[Loader]\r\nmodule = d3d11.dll\r\ninject_dlls = C:/Extra/Stale.dll\r\n',
+  );
+  await h.launch.launch('GIMI', { gameLaunchMode: 'always-normal' }, () => {});
+  const ini = await fs.readFile(path.join(h.migotoDir, 'd3dx.ini'), 'utf8');
+  assert.doesNotMatch(ini, /inject_dlls\s*=/);
+  assert.doesNotMatch(ini, /DisabledA\.dll|DisabledB\.dll|Stale\.dll/);
+});
+
 const hotPlan = {
   dlls: ['C:/Managed/ReShade64.dll', 'C:/Managed/Dx11FsrBridge.dll', 'C:/Managed/OptiScaler.dll'],
   environment: { GIMI_HOSTED_RESHADE_DLL: 'C:/Managed/ReShade64.dll', RESHADE_DISABLE_GRAPHICS_HOOK: '1', RESHADE_DISABLE_INPUT_HOOK: null },

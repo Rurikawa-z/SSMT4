@@ -9,7 +9,7 @@ import { ResourceManager, type UpdateInfo } from '../store/ResourceManager';
 import { PathHelper } from '../helper/PathHelper';
 import { GlobalConfig } from '../store/GlobalConfig';
 import { AUTO_UPDATE_SUPPORTED_PRESET_SET, getGamePresetDisplayName, getGamePresetOptions, getGithubRepoByGamePreset } from '../store/GamePreset';
-import { GameConfig, GameConfigManager, getDefaultUseUpxForGamePreset, type LaunchProgramConfig } from '../store/GameConfig';
+import { GameConfig, GameConfigManager, getDefaultUseUpxForGamePreset, type ExtraDllConfig, type LaunchProgramConfig } from '../store/GameConfig';
 import { openPath, openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { exists, mkdir } from '@tauri-apps/plugin-fs';
 import { useI18n } from 'vue-i18n';
@@ -752,7 +752,7 @@ const autoMatchExe = async (field: 'targetExePath' | 'launcherExePath') => {
   }
 };
 
-const ensureExtraDlls = (): string[] => {
+const ensureExtraDlls = (): ExtraDllConfig[] => {
   if (!Array.isArray(config.extraDlls)) {
     config.extraDlls = [];
   }
@@ -761,13 +761,12 @@ const ensureExtraDlls = (): string[] => {
 
 const syncPrimaryExtraDll = () => {
   const firstDll = ensureExtraDlls()
-    .map(item => (item || '').trim())
-    .find(Boolean);
-  config.extraDll = firstDll || '';
+    .find(item => item.enabled && item.path.trim());
+  config.extraDll = firstDll?.path || '';
 };
 
 const addExtraDll = (dllPath = '') => {
-  ensureExtraDlls().push(dllPath);
+  ensureExtraDlls().push({ path: dllPath, enabled: true });
   syncPrimaryExtraDll();
 };
 
@@ -784,9 +783,9 @@ const pickDllForIndex = async (index: number) => {
     if (selected && typeof selected === 'string') {
       const dlls = ensureExtraDlls();
       while (dlls.length <= index) {
-        dlls.push('');
+        dlls.push({ path: '', enabled: true });
       }
-      dlls[index] = selected;
+      dlls[index].path = selected;
       syncPrimaryExtraDll();
     }
   } catch (e) { console.error(e); }
@@ -807,6 +806,13 @@ const setDefaultDll = async () => {
 
 const removeExtraDll = (index: number) => {
   ensureExtraDlls().splice(index, 1);
+  syncPrimaryExtraDll();
+};
+
+const toggleExtraDll = (index: number) => {
+  const dll = ensureExtraDlls()[index];
+  if (!dll) return;
+  dll.enabled = !dll.enabled;
   syncPrimaryExtraDll();
 };
 
@@ -1215,8 +1221,13 @@ defineExpose({
 
                 <div v-if="!config.useShell || isEFMIPreset">
                   <div class="settings-field-label" style="margin-bottom:6px">{{ t('gameSettingsModal.fields.extraInjectedDll') }}</div>
-                  <div v-for="(_dll, index) in config.extraDlls" :key="index" class="settings-path-row" style="margin-bottom:6px">
-                    <input v-model="config.extraDlls![index]" type="text" class="settings-path-input" :placeholder="t('gameSettingsModal.placeholders.selectOrLeaveEmpty')" @input="syncPrimaryExtraDll" />
+                  <div v-for="(dll, index) in config.extraDlls" :key="index" class="settings-path-row extra-dll-row" :class="{ 'dll-disabled': !dll.enabled }" style="margin-bottom:6px">
+                    <input v-model="dll.path" type="text" class="settings-path-input" :placeholder="t('gameSettingsModal.placeholders.selectOrLeaveEmpty')" @input="syncPrimaryExtraDll" />
+                    <el-tooltip :content="dll.enabled ? t('gameSettingsModal.actions.disableDllInjection') : t('gameSettingsModal.actions.enableDllInjection')" placement="top" :show-after="250"><button class="settings-sm-btn dll-inject-toggle" :class="{ enabled: dll.enabled }" :aria-pressed="dll.enabled" @click="toggleExtraDll(index)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2v10"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+                      </svg>
+                    </button></el-tooltip>
                     <el-tooltip :content="t('gameSettingsModal.actions.selectFile')" placement="top" :show-after="250"><button class="settings-sm-btn" @click="pickDllForIndex(index)">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
@@ -2950,6 +2961,10 @@ defineExpose({
   color: rgba(255, 255, 255, 0.25);
 }
 
+.extra-dll-row.dll-disabled .settings-path-input {
+  opacity: 0.58;
+}
+
 .settings-sm-btn {
   display: flex;
   align-items: center;
@@ -2968,6 +2983,22 @@ defineExpose({
 .settings-sm-btn:hover {
   background: rgba(255, 255, 255, 0.14);
   color: rgba(255, 255, 255, 0.85);
+}
+
+.settings-sm-btn.dll-inject-toggle {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.36);
+}
+
+.settings-sm-btn.dll-inject-toggle.enabled {
+  border-color: rgba(var(--theme-surface-tint-rgb), 0.48);
+  background: rgba(var(--theme-surface-tint-rgb), 0.2);
+  color: var(--theme-accent);
+  box-shadow: inset 0 0 0 1px rgba(var(--theme-surface-tint-rgb), 0.08);
+}
+
+.settings-sm-btn.dll-inject-toggle.enabled:hover {
+  background: rgba(var(--theme-surface-tint-rgb), 0.32);
 }
 
 .settings-sm-btn.highlight {
